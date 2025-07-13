@@ -57,12 +57,14 @@ static void start_anim(lv_obj_t *obj, uint32_t duration_ms)
 }
 
 /* Event called when one animation loop completes → safe point to change speed */
-static void anim_ready_cb(lv_event_t *e)
+static void anim_value_cb(lv_event_t *e)
 {
     lv_obj_t *img = lv_event_get_target(e);
 
     if (pending_duration_ms && pending_duration_ms != current_duration_ms) {
-        start_anim(img, pending_duration_ms);       /* restart at loop boundary */
+        /* Update duration in-place – LVGL applies it from next tick without
+         * restarting the animation, so frame index is preserved. */
+        lv_animimg_set_duration(img, pending_duration_ms);
         current_duration_ms = pending_duration_ms;
     }
 }
@@ -106,7 +108,7 @@ int zmk_widget_uikousen_init(struct zmk_widget_uikousen *widget, lv_obj_t *paren
     sys_slist_append(&widgets, &widget->node);
 
     /* Connect ready-event so speed can change only at loop boundary */
-    lv_obj_add_event_cb(widget->obj, anim_ready_cb, LV_EVENT_READY, NULL);
+    lv_obj_add_event_cb(widget->obj, anim_value_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     current_duration_ms  = calc_duration(0);
     pending_duration_ms  = current_duration_ms;
