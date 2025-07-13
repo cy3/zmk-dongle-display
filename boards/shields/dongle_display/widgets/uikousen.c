@@ -22,22 +22,13 @@ extern const size_t UIKOUSEN_FRAME_CNT;
 
 static uint32_t calc_duration(uint8_t wpm)
 {
-    /*
-     * Map WPM → loop duration (ms) with an inverse‑proportional curve
-     * so that:
-     *   ‑   <5 WPM   : 6000 ms  (거의 정지)
-     *   ‑   40 WPM   : ~1250 ms (자연스러운 기본 속도)
-     *   ‑   120 WPM  :  250 ms  (아주 빠름, ≈40 fps)
-     *
-     * duration_ms = clamp( 2500 + (40000 / wpm), 250 … 6000 )
-     */
-    if (wpm < 5) return 6000;
-
-    uint32_t dur = 2500 + (40000U / wpm);  /* 역비례 + 오프셋으로 곡선 완화 */
-    if (dur < 400)  dur = 400;   /* 너무 빠르면 OLED 잔상 발생 */
-    if (dur > 6000) dur = 6000;  /* idle 한계 */
+    if (wpm < 5) return 6000;                     /* idle */
+    uint32_t dur = 250 + (30000U / wpm);         /* inverse proportional */
+    if (dur < 250)  dur = 250;
+    if (dur > 6000) dur = 6000;
     return dur;
 }
+
 
 /* keep list of live widgets so all can update together */
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
@@ -68,7 +59,7 @@ static void anim_value_cb(lv_event_t *e)
     uint32_t diff = (pending_duration_ms > current_duration_ms)
                         ? pending_duration_ms - current_duration_ms
                         : current_duration_ms - pending_duration_ms;
-    if (diff < current_duration_ms / 50) return; /* <5 % → ignore */
+    if (diff < current_duration_ms / 20) return; /* <5 % → ignore */
 
     /* LVGL needs a fresh start() for new duration to take effect */
     lv_animimg_set_duration(img, pending_duration_ms);
