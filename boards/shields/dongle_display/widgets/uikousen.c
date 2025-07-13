@@ -41,8 +41,13 @@ static uint32_t calc_duration(uint8_t wpm)
 
 /* keep list of live widgets so all can update together */
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
-static uint32_t current_duration_ms = 0;
+static uint32_t current_duration_ms  = 0;   /* active loop duration */
+static uint32_t pending_duration_ms  = 0;   /* to be applied on next loop */
 
+
+/* ------------------------------------------------------------------
+ *  Animation helpers
+ * ----------------------------------------------------------------*/
 static void start_anim(lv_obj_t *obj, uint32_t duration_ms)
 {
     lv_animimg_set_src(obj, SRC(uikousen_frames));
@@ -51,49 +56,48 @@ static void start_anim(lv_obj_t *obj, uint32_t duration_ms)
     lv_animimg_start(obj);
 }
 
-struct uikousen_state { uint8_t wpm; };
-
-static void apply_state(lv_obj_t *obj, struct uikousen_state st)
+/* Event called when one animation loop completes → safe point to change speed */
+static void anim_ready_cb(lv_event_t *e)
 {
-    uint32_t target = calc_duration(st.wpm);
+    lv_obj_t *img = lv_event_get_target(e);
 
-    uint32_t new_duration_ms;
-    if (!current_duration_ms)
-        new_duration_ms = target;
-    else
-        new_duration_ms = (current_duration_ms * 3 + target) / 4; /* EMA 75/25 */
-
-    uint32_t diff = (new_duration_ms > current_duration_ms)
-                        ? new_duration_ms - current_duration_ms
-                        : current_duration_ms - new_duration_ms;
-
-    if (diff > current_duration_ms / 20 || current_duration_ms == 0) {
-        lv_animimg_set_duration(obj, new_duration_ms);
-        current_duration_ms = new_duration_ms;
+    if (pending_duration_ms && pending_duration_ms != current_duration_ms) {
+        start_anim(img, pending_duration_ms);       /* restart at loop boundary */
+        current_duration_ms = pending_duration_ms;
     }
 }
 
-/* ----------  ZMK event plumbing  ---------- */
-static struct uikousen_state uikousen_state_from_evt(const zmk_event_t *eh)
+/* ------------------------------------------------------------------
+ *  WPM state propagation
+ * ----------------------------------------------------------------*/
+struct uikousen_state { uint8_t wpm; };
+
+static struct uikousen_state state_from_evt(const zmk_event_t *eh)
 {
     const struct zmk_wpm_state_changed *ev = as_zmk_wpm_state_changed(eh);
     return (struct uikousen_state){ .wpm = ev->state };
 }
 
-static void uikousen_listener_cb(struct uikousen_state st)
+static void listener_cb(struct uikousen_state st)
 {
-    struct zmk_widget_uikousen *w;
-    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
-        apply_state(w->obj, st);
-    }
+    uint32_t target = calc_duration(st.wpm);
+
+    /* Exponential smoothing (75% old + 25% new) */
+    if (!pending_duration_ms)
+        pending_duration_ms = target;
+    else
+        pending_duration_ms = (pending_duration_ms * 3 + target) / 4;
 }
 
 ZMK_DISPLAY_WIDGET_LISTENER(widget_uikousen,
                             struct uikousen_state,
-                            uikousen_listener_cb,
-                            uikousen_state_from_evt)
+                            listener_cb,
+                            state_from_evt)
 ZMK_SUBSCRIPTION(widget_uikousen, zmk_wpm_state_changed);
-/* ----------  public API  ---------- */
+
+/* ------------------------------------------------------------------
+ *  Public API
+ * ----------------------------------------------------------------*/
 int zmk_widget_uikousen_init(struct zmk_widget_uikousen *widget, lv_obj_t *parent)
 {
     widget->obj = lv_animimg_create(parent);
@@ -101,7 +105,13 @@ int zmk_widget_uikousen_init(struct zmk_widget_uikousen *widget, lv_obj_t *paren
 
     sys_slist_append(&widgets, &widget->node);
 
-    start_anim(widget->obj, calc_duration(0));
+    /* Connect ready-event so speed can change only at loop boundary */
+    lv_obj_add_event_cb(widget->obj, anim_ready_cb, LV_EVENT_READY, NULL);
+
+    current_duration_ms  = calc_duration(0);
+    pending_duration_ms  = current_duration_ms;
+    start_anim(widget->obj, current_duration_ms);
+
     return 0;
 }
 
