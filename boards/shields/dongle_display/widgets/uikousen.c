@@ -14,6 +14,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include "uikousen.h"
 
+#define SRC(array) (const void **)array, sizeof(array) / sizeof(lv_img_dsc_t *)
+
 /* frames supplied by uikousen_images.c */
 extern const lv_img_dsc_t *uikousen_frames[];
 extern const size_t UIKOUSEN_FRAME_CNT;
