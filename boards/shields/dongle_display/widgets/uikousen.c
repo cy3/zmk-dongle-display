@@ -14,8 +14,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include "uikousen.h"
 
-#define SRC(array) (const void **)array, sizeof(array) / sizeof(lv_img_dsc_t *)
-
 /* frames supplied by uikousen_images.c */
 extern const lv_img_dsc_t *uikousen_frames[];
 extern const size_t UIKOUSEN_FRAME_CNT;
@@ -50,7 +48,9 @@ static uint32_t cur_dur_ms = DUR_IDLE;
  * ----------------------------------------------------------------*/
 static void restart_anim(lv_obj_t *obj, uint32_t dur_ms)
 {
-    lv_animimg_set_src(obj, SRC(uikousen_frames));
+    lv_animimg_set_src(obj,
+                       (const void **)uikousen_frames,   /* 프레임 배열 */
+                       UIKOUSEN_FRAME_CNT);              /* 프레임 수 */
     lv_animimg_set_duration(obj, dur_ms);
     lv_animimg_set_repeat_count(obj, LV_ANIM_REPEAT_INFINITE);
     lv_animimg_start(obj);
