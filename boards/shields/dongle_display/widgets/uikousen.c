@@ -74,6 +74,7 @@ static void anim_value_cb(lv_event_t *e)
     lv_animimg_set_duration(img, pending_duration_ms);
     lv_animimg_start(img);                       /* restarts loop */
     current_duration_ms = pending_duration_ms;
+}
 
 /* ------------------------------------------------------------------
  *  WPM state propagation
