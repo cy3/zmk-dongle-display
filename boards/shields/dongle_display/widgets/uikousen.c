@@ -24,8 +24,8 @@ extern const size_t UIKOUSEN_FRAME_CNT;
  * ----------------------------------------------------------------*/
 #define DUR_IDLE   6000  /* <5   WPM */
 #define DUR_SLOW   2000  /* 5‑29 WPM */
-#define DUR_MID     800  /* 30‑69 WPM */
-#define DUR_FAST    250  /* ≥70  WPM */
+#define DUR_MID    1200  /* 30‑69 WPM */
+#define DUR_FAST    800  /* ≥70  WPM */
 
 static uint32_t bucket_duration(uint8_t wpm)
 {
