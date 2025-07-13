@@ -22,12 +22,21 @@ extern const size_t UIKOUSEN_FRAME_CNT;
 
 static uint32_t calc_duration(uint8_t wpm)
 {
-    const uint32_t DUR_SLOW = 6000;  /* ms per loop when idle */
-    const uint32_t DUR_FAST = 150;   /* ms per loop when WPM ≥120 */
+    /*
+     * Map WPM → loop duration (ms) with an inverse‑proportional curve
+     * so that:
+     *   ‑   <5 WPM   : 6000 ms  (거의 정지)
+     *   ‑   40 WPM   : ~1250 ms (자연스러운 기본 속도)
+     *   ‑   120 WPM  :  250 ms  (아주 빠름, ≈40 fps)
+     *
+     * duration_ms = clamp( 2500 + (40000 / wpm), 250 … 6000 )
+     */
+    if (wpm < 5) return 6000;
 
-    if (wpm < 3) return DUR_SLOW;
-    if (wpm > 120) wpm = 120;
-    return DUR_SLOW - ((wpm - 3) * (DUR_SLOW - DUR_FAST) / (120 - 3));
+    uint32_t dur = 2500 + (40000U / wpm);  /* 역비례 + 오프셋으로 곡선 완화 */
+    if (dur < 400)  dur = 400;   /* 너무 빠르면 OLED 잔상 발생 */
+    if (dur > 6000) dur = 6000;  /* idle 한계 */
+    return dur;
 }
 
 /* keep list of live widgets so all can update together */
@@ -46,11 +55,16 @@ struct uikousen_state { uint8_t wpm; };
 
 static void apply_state(lv_obj_t *obj, struct uikousen_state st)
 {
-    uint32_t dur = calc_duration(st.wpm);
-    if (dur != current_duration_ms) {
-        start_anim(obj, dur);
-        current_duration_ms = dur;
+    uint32_t target = calc_duration(st.wpm);
+
+    /* 부드러운 속도 전환: 이전 75% + 새 25% 가중 평균 */
+    if (!current_duration_ms) {
+        current_duration_ms = target;      /* 초기화 */
+    } else {
+        current_duration_ms = (current_duration_ms * 3 + target) / 4;
     }
+
+    start_anim(obj, current_duration_ms);
 }
 
 /* ----------  ZMK event plumbing  ---------- */
