@@ -57,14 +57,20 @@ static void apply_state(lv_obj_t *obj, struct uikousen_state st)
 {
     uint32_t target = calc_duration(st.wpm);
 
-    /* 부드러운 속도 전환: 이전 75% + 새 25% 가중 평균 */
-    if (!current_duration_ms) {
-        current_duration_ms = target;      /* 초기화 */
-    } else {
-        current_duration_ms = (current_duration_ms * 3 + target) / 4;
-    }
+    uint32_t new_duration_ms;
+    if (!current_duration_ms)
+        new_duration_ms = target;
+    else
+        new_duration_ms = (current_duration_ms * 3 + target) / 4; /* EMA 75/25 */
 
-    start_anim(obj, current_duration_ms);
+    uint32_t diff = (new_duration_ms > current_duration_ms)
+                        ? new_duration_ms - current_duration_ms
+                        : current_duration_ms - new_duration_ms;
+
+    if (diff > current_duration_ms / 20 || current_duration_ms == 0) {
+        lv_animimg_set_duration(obj, new_duration_ms);
+        current_duration_ms = new_duration_ms;
+    }
 }
 
 /* ----------  ZMK event plumbing  ---------- */
