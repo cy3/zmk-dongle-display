@@ -1,10 +1,16 @@
 /* 10‑frame "Uikousen" animation widget – speed scales with WPM            */
 #include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
-#include <lvgl.h>
-#include <zmk/events/wpm_state_changed.h>
+#include <zephyr/bluetooth/services/bas.h>
 
+#include <lvgl.h>
+
+#include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
+
+#include <zmk/display.h>
+#include <zmk/event_manager.h>
+#include <zmk/events/wpm_state_changed.h>
+#include <zmk/wpm.h>
 
 #include "uikousen.h"
 
@@ -67,7 +73,6 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_uikousen,
                             uikousen_listener_cb,
                             uikousen_state_from_evt)
 ZMK_SUBSCRIPTION(widget_uikousen, zmk_wpm_state_changed);
-
 /* ----------  public API  ---------- */
 int zmk_widget_uikousen_init(struct zmk_widget_uikousen *widget, lv_obj_t *parent)
 {
