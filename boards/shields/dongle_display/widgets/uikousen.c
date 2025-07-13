@@ -57,17 +57,23 @@ static void start_anim(lv_obj_t *obj, uint32_t duration_ms)
 }
 
 /* Event called when one animation loop completes → safe point to change speed */
+/* Event fires on every frame change */
 static void anim_value_cb(lv_event_t *e)
 {
     lv_obj_t *img = lv_event_get_target(e);
 
-    if (pending_duration_ms && pending_duration_ms != current_duration_ms) {
-        /* Update duration in-place – LVGL applies it from next tick without
-         * restarting the animation, so frame index is preserved. */
-        lv_animimg_set_duration(img, pending_duration_ms);
-        current_duration_ms = pending_duration_ms;
-    }
-}
+    if (!pending_duration_ms) return;            /* nothing to do */
+
+    /* Apply only if change >5 % to avoid thrashing */
+    uint32_t diff = (pending_duration_ms > current_duration_ms)
+                        ? pending_duration_ms - current_duration_ms
+                        : current_duration_ms - pending_duration_ms;
+    if (diff < current_duration_ms / 50) return; /* <5 % → ignore */
+
+    /* LVGL needs a fresh start() for new duration to take effect */
+    lv_animimg_set_duration(img, pending_duration_ms);
+    lv_animimg_start(img);                       /* restarts loop */
+    current_duration_ms = pending_duration_ms;
 
 /* ------------------------------------------------------------------
  *  WPM state propagation
