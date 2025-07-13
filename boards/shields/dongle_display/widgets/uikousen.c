@@ -18,57 +18,44 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 extern const lv_img_dsc_t *uikousen_frames[];
 extern const size_t UIKOUSEN_FRAME_CNT;
 
-#define SRC(arr) (const void **)(arr), UIKOUSEN_FRAME_CNT
-
-static uint32_t calc_duration(uint8_t wpm)
-{
-    if (wpm < 5) return 6000;                     /* idle */
-    uint32_t dur = 250 + (30000U / wpm);         /* inverse proportional */
-    if (dur < 250)  dur = 250;
-    if (dur > 6000) dur = 6000;
-    return dur;
-}
-
-
-/* keep list of live widgets so all can update together */
-static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
-static uint32_t current_duration_ms  = 0;   /* active loop duration */
-static uint32_t pending_duration_ms  = 0;   /* to be applied on next loop */
-
 
 /* ------------------------------------------------------------------
- *  Animation helpers
+ *  Duration buckets – tuned for 10‑frame loop
  * ----------------------------------------------------------------*/
-static void start_anim(lv_obj_t *obj, uint32_t duration_ms)
+#define DUR_IDLE   6000  /* <5   WPM */
+#define DUR_SLOW   2000  /* 5‑29 WPM */
+#define DUR_MID     800  /* 30‑69 WPM */
+#define DUR_FAST    250  /* ≥70  WPM */
+
+static uint32_t bucket_duration(uint8_t wpm)
+{
+    if (wpm < 5)   return DUR_IDLE;
+    if (wpm < 30)  return DUR_SLOW;
+    if (wpm < 70)  return DUR_MID;
+    return DUR_FAST;
+}
+
+/* ------------------------------------------------------------------
+ *  Global widget list – all sync to same speed bucket
+ * ----------------------------------------------------------------*/
+static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
+
+/* Track current bucket so we restart only when bucket changes */
+static uint32_t cur_dur_ms = DUR_IDLE;
+
+/* ------------------------------------------------------------------
+ *  Helper to (re)start animation at given duration
+ * ----------------------------------------------------------------*/
+static void restart_anim(lv_obj_t *obj, uint32_t dur_ms)
 {
     lv_animimg_set_src(obj, SRC(uikousen_frames));
-    lv_animimg_set_duration(obj, duration_ms);
+    lv_animimg_set_duration(obj, dur_ms);
     lv_animimg_set_repeat_count(obj, LV_ANIM_REPEAT_INFINITE);
     lv_animimg_start(obj);
 }
 
-/* Event called when one animation loop completes → safe point to change speed */
-/* Event fires on every frame change */
-static void anim_value_cb(lv_event_t *e)
-{
-    lv_obj_t *img = lv_event_get_target(e);
-
-    if (!pending_duration_ms) return;            /* nothing to do */
-
-    /* Apply only if change >5 % to avoid thrashing */
-    uint32_t diff = (pending_duration_ms > current_duration_ms)
-                        ? pending_duration_ms - current_duration_ms
-                        : current_duration_ms - pending_duration_ms;
-    if (diff < current_duration_ms / 20) return; /* <5 % → ignore */
-
-    /* LVGL needs a fresh start() for new duration to take effect */
-    lv_animimg_set_duration(img, pending_duration_ms);
-    lv_animimg_start(img);                       /* restarts loop */
-    current_duration_ms = pending_duration_ms;
-}
-
 /* ------------------------------------------------------------------
- *  WPM state propagation
+ *  WPM event handling – bucket logic identical to reference code
  * ----------------------------------------------------------------*/
 struct uikousen_state { uint8_t wpm; };
 
@@ -80,13 +67,14 @@ static struct uikousen_state state_from_evt(const zmk_event_t *eh)
 
 static void listener_cb(struct uikousen_state st)
 {
-    uint32_t target = calc_duration(st.wpm);
+    uint32_t target_dur = bucket_duration(st.wpm);
+    if (target_dur == cur_dur_ms) return; /* same bucket – keep playing */
 
-    /* Exponential smoothing (75% old + 25% new) */
-    if (!pending_duration_ms)
-        pending_duration_ms = target;
-    else
-        pending_duration_ms = (pending_duration_ms * 3 + target) / 4;
+    struct zmk_widget_uikousen *w;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, w, node) {
+        restart_anim(w->obj, target_dur);
+    }
+    cur_dur_ms = target_dur;
 }
 
 ZMK_DISPLAY_WIDGET_LISTENER(widget_uikousen,
@@ -105,12 +93,8 @@ int zmk_widget_uikousen_init(struct zmk_widget_uikousen *widget, lv_obj_t *paren
 
     sys_slist_append(&widgets, &widget->node);
 
-    /* Connect ready-event so speed can change only at loop boundary */
-    lv_obj_add_event_cb(widget->obj, anim_value_cb, LV_EVENT_VALUE_CHANGED, NULL);
-
-    current_duration_ms  = calc_duration(0);
-    pending_duration_ms  = current_duration_ms;
-    start_anim(widget->obj, current_duration_ms);
+    restart_anim(widget->obj, DUR_IDLE);
+    cur_dur_ms = DUR_IDLE;
 
     return 0;
 }
